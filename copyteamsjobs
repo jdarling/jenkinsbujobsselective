@@ -1,0 +1,81 @@
+#!/bin/bash
+
+DIR="$( cd "$( dirname "${BASH_SOURCE[0]}" )" >/dev/null 2>&1 && pwd )"
+cd "${DIR}" || exit 1
+wd=$(pwd)
+
+JENKINS_HOME="/var/jenkins_home"
+#JENKINS_HOME=$(pwd)
+JENKINS_JOB_FOLDER="${JENKINS_HOME}/jobs"
+OUTPUT_JOB_FOLDER=""
+COPY_LAST_NUMBER_JOBS=3
+
+SEP="----------------------------------------"
+
+showHelp(){
+  scriptname=`basename "$0"`
+  echo "
+${scriptname} <options>
+
+  Options:
+    -j, --jenkinsHome - Jenkins home folder (default ${JENKINS_HOME})
+    -f, --jobFolder - Folder for Jenkins Jobs (default ${JENKINS_JOB_FOLDER})
+    -o, --outputFolder - Output folder to copy Jobs to
+    -n, --number - Number of jobs to copy (default ${COPY_LAST_NUMBER_JOBS})
+
+    -h or --help - Show this screen
+    "
+    exit 0
+}
+
+while [[ $# -gt 0 ]]
+do
+  key="$1"
+  case $key in
+    -j|--jenkinsHome|--jenkinshome)
+      JENKINS_HOME="$2"
+      shift
+    ;;
+    -f|--jobFolder|--jobfolder)
+      JENKINS_JOB_FOLDER="$2"
+      shift
+    ;;
+    -o|--outputFolder|--outputfolder)
+      OUTPUT_JOB_FOLDER="$2"
+      shift
+    ;;
+    -n|--number)
+      COPY_LAST_NUMBER_JOBS=$2
+      shift
+    ;;
+    -h|--help)
+      showHelp
+    ;;
+    # unknown option
+    *)
+    ;;  esac
+  shift # past argument or value
+done
+
+if [[ "${OUTPUT_JOB_FOLDER}" == "" ]]; then
+  echo "ERROR: Must supply Output Job Folder!"
+  showHelp
+  exit 1 
+fi
+
+cd ${JENKINS_JOB_FOLDER}
+
+IFS=$(echo -en "\n\b")
+for folder in *; do
+  echo "Copying ${folder}"
+  "${wd}/copyjobs" --jenkinsHome "${JENKINS_HOME}" --jobFolder "${JENKINS_JOB_FOLDER}/${folder}" --outputFolder "${OUTPUT_JOB_FOLDER}/${folder}" --number "${COPY_LAST_NUMBER_JOBS}"
+
+  SAVEIFS=$IFS
+  IFS=$(echo -en "\n\b")
+  for fullfile in $(find "${JENKINS_JOB_FOLDER}/${folder}" -maxdepth 1 -type f); do
+    file=$(basename "$fullfile")
+    cp "${fullfile}" "${OUTPUT_JOB_FOLDER}/${folder}/${file}"
+  done
+  IFS=$SAVEIFS
+done
+IFS=$SAVEIFS

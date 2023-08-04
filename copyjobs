@@ -1,0 +1,113 @@
+#!/bin/bash
+
+JENKINS_HOME="/var/jenkins_home"
+#JENKINS_HOME=$(pwd)
+JENKINS_JOB_FOLDER="${JENKINS_HOME}/jobs"
+OUTPUT_JOB_FOLDER=""
+COPY_LAST_NUMBER_JOBS=3
+
+SEP="----------------------------------------"
+
+showHelp(){
+  scriptname=`basename "$0"`
+  echo "
+${scriptname} <options>
+
+  Options:
+    -j, --jenkinsHome - Jenkins home folder (default ${JENKINS_HOME})
+    -f, --jobFolder - Folder for Jenkins Jobs (default ${JENKINS_JOB_FOLDER})
+    -o, --outputFolder - Output folder to copy Jobs to
+    -n, --number - Number of jobs to copy (default ${COPY_LAST_NUMBER_JOBS})
+
+    -h or --help - Show this screen
+    "
+    exit 0
+}
+
+while [[ $# -gt 0 ]]
+do
+  key="$1"
+  case $key in
+    -j|--jenkinsHome|--jenkinshome)
+      JENKINS_HOME="$2"
+      shift
+    ;;
+    -f|--jobFolder|--jobfolder)
+      JENKINS_JOB_FOLDER="$2"
+      shift
+    ;;
+    -o|--outputFolder|--outputfolder)
+      OUTPUT_JOB_FOLDER="$2"
+      shift
+    ;;
+    -n|--number)
+      COPY_LAST_NUMBER_JOBS=$2
+      shift
+    ;;
+    -h|--help)
+      showHelp
+    ;;
+    # unknown option
+    *)
+    ;;  esac
+  shift # past argument or value
+done
+
+if [[ "${OUTPUT_JOB_FOLDER}" == "" ]]; then
+  echo "ERROR: Must supply Output Job Folder!"
+  showHelp
+  exit 1 
+fi
+
+cd ${JENKINS_JOB_FOLDER}
+
+declare -A JENKINS_JOBS
+
+# Format: jobs/TeamName/jobs/Project/builds
+
+SAVEIFS=$IFS
+IFS=$(echo -en "\n\b")
+for folder in *; do
+  if [[ -d "${JENKINS_JOB_FOLDER}/${folder}/jobs/" ]] && [[ -f "${JENKINS_JOB_FOLDER}/${folder}/nextBuildNumber" ]]; then
+    JENKINS_JOBS[${#JENKINS_JOBS[@]}]="${folder}"
+  fi
+done
+IFS=$SAVEIFS
+
+max2()
+{ if (( "$1" > "$2" ))
+  then
+    echo "$1"
+  else
+    echo "$2"
+  fi
+}
+
+for ((i = 0; i < ${#JENKINS_JOBS[@]}; i++)); do
+  job="${JENKINS_JOBS[$i]}"
+  jobPath="${JENKINS_JOB_FOLDER}/${job}"
+  echo $SEP
+  echo "Copying ${job}"
+  echo $SEP
+  lastBuildNumber=$(cat "${jobPath}/nextBuildNumber")
+  calcLast=$(($lastBuildNumber - $COPY_LAST_NUMBER_JOBS))
+  copyJobsFrom=$(max2 $calcLast 1)
+  #echo "Copying from: $copyJobsFrom"
+  for ((jobId = $copyJobsFrom; jobId < $lastBuildNumber; jobId++)); do
+    if [[ -d "${jobPath}/jobs/${jobId}" ]]; then
+      echo "Copying \"${jobPath}/jobs/${jobId}\""
+      #Do the copy
+      mkdir -p "${OUTPUT_JOB_FOLDER}/${job}/jobs/"
+      cp -r "${jobPath}/jobs/${jobId}" "${OUTPUT_JOB_FOLDER}/${job}/jobs/${jobId}"
+      SAVEIFS=$IFS
+      IFS=$(echo -en "\n\b")
+      for fullfile in $(find "${jobPath}" -maxdepth 1 -type f); do
+        file=$(basename "$fullfile")
+        cp "${fullfile}" "${OUTPUT_JOB_FOLDER}/${job}/${file}"
+      done
+      IFS=$SAVEIFS
+    else
+      echo "ERROR: Job folder doesn't exist \"${jobPath}/jobs/${jobId}\"!"
+    fi
+  done
+done
